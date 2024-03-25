@@ -1,51 +1,92 @@
-#!/usr/bin/env python3
-"""
-main.py
-the entrance of the program
-"""
-
-import sys
 import os
-import tools.utils as utils
-import tools.run as run
-from tools.initialize import connect, init
-from tools.config import config
+import logging
+import coloredlogs
+from driver import location, connect, mount
+from pymobiledevice3.cli.remote import RemoteServiceDiscoveryService
+from pymobiledevice3.cli.developer import DvtSecureSocketProxyService
+from init import init, route
+import run
+import config
 
-if not os.path.exists("./log"):
-    os.mkdir("./log")
-sys.stderr=open("./log/error.log", "w")  # redirect error message
+debug = os.environ.get("DEBUG", False)
 
-
-OS = utils.getOS()  # get the OS, possible values: win, darwin, linux
-# path separators for different systems
-seperator = {"win": "\\", "darwin": "/", "linux": "/"}  # path seperator
-seperator = seperator[OS]
-libimobiledeviceDir = config.libimobiledeviceDir + seperator + OS  # path to libimobiledevice
-v = config.v  # simulate speed, unit: m/s
-# environment variables
-env = {  # environment variables for library
-    "win": None,
-    "darwin": {"DYLD_LIBRARY_PATH": os.getcwd() + "/" + libimobiledeviceDir},
-    "linux": {"LD_LIBRARY_PATH": os.getcwd() + "/" + libimobiledeviceDir}
-}
-
-# connect to the device and mount DevelopDiskImage
-connect()
-
-loc = init()  # get the route
-print("路线信息读取成功")
+# Set logging level
+coloredlogs.install(level=logging.INFO)
+for logger_name in [
+        'wintun', 'quic', 'asyncio', 'zeroconf', 'parso.cache',
+        'parso.cache.pickle', 'parso.python.diff', 'humanfriendly.prompts',
+        'blib2to3.pgen2.driver', 'urllib3.connectionpool'
+]:
+    logging.getLogger(logger_name).setLevel(
+        logging.DEBUG if debug else logging.WARNING)
 
 
-if OS == "win":
-    utils.setDisplayRequired()
-print("已开始模拟跑步, 速度大约为 {} m/s".format(str(v)))
-print("会无限绕圈，要停可以按Ctrl+C")
-print("请勿直接关闭窗口，否则无法还原正常定位")
+def main():
+    # Set level
+    logger = logging.getLogger(__name__)
+    coloredlogs.install(level=logging.INFO)
+    logger.setLevel(logging.INFO)
+    if debug:
+        logger.setLevel(logging.DEBUG)
+        coloredlogs.install(level=logging.DEBUG)
 
-try:
-    run.run(loc, v)
-finally:
-    utils.resetLoc()  # reset the location
-    if OS == "win":
-        utils.resetDisplayRequired()
-    print("现在你可以关闭当前窗口或终端了")
+    logger.info("Initialization started")
+
+    DeviceName, version = init.init()
+
+    logger.info(f"Connected to {DeviceName}")
+    logger.info(f"iOS version: {version}")
+
+    lockdown = connect.get_usbmux_lockdownclient()
+    logger.info("Initialization done")
+
+    loc = route.get_route(config.config.routeConfig)
+    logger.info(f"Got route from {config.config.routeConfig}")
+    if int(version.split(".")[0]) >= 17:
+        process, address, port = init.start_tunnel_process(logger)
+
+        with RemoteServiceDiscoveryService((address, port)) as rsd:
+            with DvtSecureSocketProxyService(rsd) as dvt:
+                try:
+                    logger.info(
+                        f"Simulation of running has started with speed around {config.config.v} m/s"
+                    )
+                    logger.info("Press Ctrl+C to exit")
+
+                    run.run(dvt, version, loc, config.config.v)
+
+                except KeyboardInterrupt:
+                    logger.info("Received KeyboardInterrupt")
+                    logger.info("Clearing location")
+                    location.clear_location_17(dvt)
+                    logger.info("Location cleared")
+
+                finally:
+                    process.terminate()
+                    logger.info("Tunnel process terminated")
+                    logger.info("Bye")
+
+    else:
+        logger.info("Starting to mount image")
+        mount.mount_image(lockdown)
+        logger.info(
+            f"Simulation of running has started with speed around {config.config.v} m/s"
+        )
+        logger.info("Press Ctrl+C to exit")
+
+        try:
+            run.run(lockdown, version, loc, config.config.v)
+
+        except KeyboardInterrupt:
+            logger.info("Received KeyboardInterrupt")
+            logger.info("Clearing location")
+            location.clear_location(lockdown)
+            logger.info("Location cleared")
+        finally:
+            mount.unmount_image(lockdown)
+            logger.info("Image unmounted")
+            logger.info("Bye")
+
+
+if __name__ == "__main__":
+    main()
