@@ -39,9 +39,11 @@
 3. 对于iOS 17以下的设备，需要挂载开发者镜像。
     - 打开 [DeveloperDiskImage](https://github.com/mspvirajpatel/Xcode_Developer_Disk_Images/releases) 仓库  
     - 下载对应自己的 iOS 版本的 `DeveloperDiskImage.dmg` 和 `DeveloperDiskImage.dmg.signature` 文件
-    - 将文件放入相应的目录（如图所示）
+    - 将文件放入相应的目录  
 
-    <img src="https://s2.loli.net/2024/03/25/uUgEaDdc7SA6h9J.png">  
+        `C:\Users\{用户名}\.pymobiledevice3\Xcode.app\Contents\Developer\Platforms\iPhoneOS.platform\DeviceSupport`
+
+    （如图所示）<img src="https://s2.loli.net/2024/03/25/uUgEaDdc7SA6h9J.png">  
 4. 获取跑步路径，格式需与 [iOSFakeRun](https://github.com/Mythologyli/iOSFakeRun) 相同，项目预置了紫金港操场和海宁操场路径（在 `config.yaml` 中修改），建议自行绘制路径
 5. 打开 `route.txt` 文件，粘贴路径坐标，保存
 6. 在 `config.yaml` 中设置速度参数 `v`，例如，3.3对应大约5-5.5分钟每公里的配速
